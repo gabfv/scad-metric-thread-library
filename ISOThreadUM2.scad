@@ -6,11 +6,12 @@
 //   http://en.wikipedia.org/wiki/File:ISO_and_UTS_Thread_Dimensions.svg
 
 $fn=30;
-WrenchSizes=0;	// =0= Rolson sizes, =1=Fairbury sizes
+WrenchSizes=0;	// =0= Rolson sizes, =1=Fairbury sizes, =2= Small bolt head sizes
 
 //--demo functions--------------------------------------------------------------
 
 //hex_bolt(10,16);						// make an M10 x 16 ISO bolt
+//hex_bolt_with_thread_in(10,16,6);     // make an M10 X 16 ISO bolt with an M6 thread inside the bolt.
 //hex_nut(10);							// make an M10 ISO nut
 //hex_bolt(8,16);						// make an M8 x 16 ISO bolt
 //hex_nut(8);							// make an M8 ISO nut
@@ -23,6 +24,7 @@ WrenchSizes=0;	// =0= Rolson sizes, =1=Fairbury sizes
 //thread_in(8,10);						// make an M8 x 10 ISO thread
 //thread_in_ring(8,10,2);				// make a ring to enclose an M8 x 10 ISO thread with thickness 2 mm
 //thread_in_pitch(8,10,1.0);			// make an M8 x 10 thread with 1mm pitch
+//block_with_thread_in(8,10,16,16);   // Make an M8 X 10 thread in a block of 16 x 16
 
 //--pitch-----------------------------------------------------------------------
 // function for ISO coarse thread pitch (these are specified by ISO)
@@ -65,7 +67,62 @@ function fairbury_hex_bolt_dia(dia) = lookup(dia, [
 function fairbury_hex_bolt_hi(dia) = lookup(dia, [
 [3,2.4],[4,3.2],[5,3.4],[6,3.9],[8,5.1],[10,6.2],[12,7.3],[16,9.7],[20,12.2],[24,14.6],[30,17.9],[36,21.7]]);
 
+// function for small hex bolt head diameter from thread size
+function small_hex_bolt_dia(dia) = dia * 1.2;
+// function for small hex bolt head height from thread size
+function small_hex_bolt_hi(dia) = dia * 0.4;
+
 //--top level modules-----------------------------------------------------------
+
+module block_with_thread_in(dia,hi,block_x,block_y)
+// Make a block with a threaded hole through its center.
+//  dia=diameter, 6=M6 etc.
+//  hi=length of threaded part of bolt, also the height of the block.
+//  block_x=length of the block.
+//	 block_y=width of the block.
+{
+	//Make the block with a cylinder through its center.
+	difference()
+	{
+		translate([-block_x/2, -block_y/2, 0]) cube(size = [block_x, block_y, hi]);
+		translate([0,0,-1]) cylinder(r = (dia/2),h = hi+2);
+	}
+
+	thread_in(8, 10); //Add the thread.
+}
+
+module hex_bolt_with_thread_in(dia,hi,diaThreadIn)
+// make an ISO bolt
+//  dia=diameter, 6=M6 etc.
+//  hi=length of threaded part of bolt
+//  diaThreadIn=diameter of the thread inside
+{
+	if (dia > diaThreadIn + 1)
+	{
+		//We need to know the height of the bolt head so we can offset the threaded hole because the bolt head is at the bottom, near Z=0.
+		heightBoltHead = 0; //Normally, it can't be set to 0;
+		heightBoltHead = WrenchSizes == 0 ? rolson_hex_bolt_hi(dia) : 0;
+		heightBoltHead = (heightBoltHead != 0 && WrenchSizes == 1) ? fairbury_hex_bolt_hi(dia) : 0;
+		heightBoltHead = (heightBoltHead != 0 && WrenchSizes == 2) ? small_hex_bolt_hi(dia) : 0;
+
+		//Make the bolt with the cylinder inside of it.
+		difference()
+		{
+		   if (WrenchSizes==0)	rolson_hex_bolt(dia,hi);
+		   else if (WrenchSizes==1) fairbury_hex_bolt(dia,hi);
+		   else small_hex_bolt(dia,hi);
+		   translate([0,0,heightBoltHead]) cylinder(r = (diaThreadIn/2),h = hi+0.1);
+		}
+
+		translate([0,0,heightBoltHead]) thread_in(diaThreadIn,hi-0.2); //Add the thread.
+		//Debug, to see if the smaller bolt will fit.
+		//rotate([180,0,0]) translate([0,0,-heightBoltHead-hi-2]) small_hex_bolt(diaThreadIn,hi);
+	}
+	else
+	{
+		echo("The diameter for the thread inside (",diaThreadIn,") + 1 cannot be equal or higher than the diameter of the bolt (",dia,")!");
+	}
+}
 
 module hex_bolt(dia,hi)
 // make an ISO bolt
@@ -73,7 +130,8 @@ module hex_bolt(dia,hi)
 //  hi=length of threaded part of bolt
 {
 	if (WrenchSizes==0)	rolson_hex_bolt(dia,hi);
-	else					fairbury_hex_bolt(dia,hi);
+	else if (WrenchSizes==1) fairbury_hex_bolt(dia,hi);
+   else small_hex_bolt(dia,hi);
 }
 
 module hex_nut(dia,hi)
@@ -192,6 +250,17 @@ module fairbury_hex_bolt(dia,hi)
 	translate([0,0,hhi-0.1])	thread_out_centre(dia,hi+0.1);
 }
 
+module small_hex_bolt(dia,hi)
+// make an ISO bolt with Fairbury wrench sizes
+//  dia=diameter, 6=M6 etc.
+//  hi=length of threaded part of bolt
+{
+	hhi = small_hex_bolt_hi(dia);
+	cylinder(r = small_hex_bolt_dia(dia)/2,h = hhi, $fn=6);
+	translate([0,0,hhi-0.1])	thread_out(dia,hi+0.1);
+	translate([0,0,hhi-0.1])	thread_out_centre(dia,hi+0.1);
+}
+
 module rolson_hex_nut(dia)
 // make an ISO nut with Rolson wrench sizes
 //  dia=diameter, 6=M6 etc.
@@ -248,11 +317,11 @@ module th_out_pt(rt,p,s,sg,thr,h,sh)
 	//   1,4
 	//   |\
 	//   | \  2,5
- 	//   | / 
+ 	//   | /
 	//   |/
 	//   0,3
 	//  view from front (x & z) extruded in y by sg
-	//  
+	//
 	//echo(str("as=",as,", ae=",ae," z=",z));
 	polyhedron(
 		points = [
@@ -299,12 +368,12 @@ module th_in_pt(rt,p,s,sg,thr,h,sh)
 	pp = p/2;
 	//         2,5
 	//          /|
-	//     1,4 / | 
+	//     1,4 / |
  	//         \ |
 	//          \|
 	//         0,3
 	//  view from front (x & z) extruded in y by sg
-	//  
+	//
 	polyhedron(
 		points = [
 			[cos(as)*(rt+(5*h)),sin(as)*(rt+(5*h)),z],				//0
