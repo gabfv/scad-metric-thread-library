@@ -88,7 +88,7 @@ module block_with_thread_in(dia,hi,block_x,block_y)
 		translate([0,0,-1]) cylinder(r = (dia/2),h = hi+2);
 	}
 
-	thread_in(8, 10); //Add the thread.
+	thread_in(dia, hi); //Add the thread.
 }
 
 module hex_bolt_with_thread_in(dia,hi,diaThreadIn)
